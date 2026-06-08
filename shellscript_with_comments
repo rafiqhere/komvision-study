@@ -1,0 +1,113 @@
+#!/bin/bash
+# Use Bash shell to execute this script
+
+set -e
+# Stop script immediately if any command fails (error handling)
+
+if [ -S /var/run/docker.sock ]; then
+# Check if Docker socket exists (means Docker daemon is accessible)
+
+    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+    # Get group ID (GID) of the Docker socket file
+
+    if ! getent group "$DOCKER_GID" >/dev/null; then
+    # Check if a group with this GID already exists in system
+
+        groupadd -g "$DOCKER_GID" dockerhost
+        # Create a new group named dockerhost with same GID as Docker socket
+    fi
+
+    usermod -aG "$DOCKER_GID" jenkins
+    # Add jenkins user to Docker group so it can run Docker commands
+fi
+
+
+if [ -n "${NB_SETUP_KEY:-}" ]; then
+# Check if NetBird setup key is provided (not empty)
+
+    if [ -S /var/run/netbird.sock ]; then
+    # Check if NetBird socket already exists
+
+        if ! netbird status >/dev/null 2>&1; then
+        # If NetBird is not working properly
+
+            echo "Removing stale NetBird socket..."
+            # Print message for debugging
+
+            rm -f /var/run/netbird.sock
+            # Delete broken/stale socket file
+        fi
+    fi
+
+    echo "Starting NetBird..."
+    # Inform that NetBird service is starting
+
+    netbird service start || true
+    # Start NetBird background service (ignores failure)
+
+    echo "Waiting for NetBird daemon socket..."
+    # Wait for NetBird socket to be created
+
+    for i in $(seq 1 20); do
+    # Try up to 20 times (20 seconds max)
+
+        if [ -S /var/run/netbird.sock ]; then
+        # Check if socket is created
+
+            echo "NetBird daemon socket is ready."
+            # Success message
+
+            break
+            # Exit loop
+        fi
+
+        sleep 1
+        # Wait 1 second before retry
+    done
+
+    if [ ! -S /var/run/netbird.sock ]; then
+    # If socket still not created after waiting
+
+        echo "NetBird daemon socket was not created."
+        # Error message
+
+        ps aux | grep netbird || true
+        # Show NetBird processes for debugging
+
+        exit 1
+        # Stop script (fail container startup)
+    fi
+
+    echo "Starting Netbird Daemon"
+    # Print message before connecting to NetBird network
+
+    netbird up \
+        --setup-key "$NB_SETUP_KEY" \
+        # Authenticate using setup key
+
+        --no-browser \
+        # Disable browser login (server mode)
+
+        --block-inbound \
+        # Block incoming connections for security
+
+        --hostname "${NB_HOSTNAME:-jenkins}" \
+        # Set hostname (default = jenkins)
+
+        ${NB_MANAGEMENT_URL:+--management-url "$NB_MANAGEMENT_URL"}
+        # if [-n "NB_MANAGEMENT_URL"]; then
+        # --magement-url "$NB_MANAGEMENT_URL"
+        # fi
+    echo "Netbird status is"
+    # Prints status header
+
+    netbird status || true
+    # Show connection status (ignore failure)
+else
+    echo "NB_SETUP_KEY not provided; skipping NetBird startup."
+    # Skip NetBird if setup key is missing
+fi
+
+
+exec gosu jenkins /usr/bin/tini -- /usr/local/bin/jenkins.sh
+# Switch to jenkins user and start Jenkins using tini (proper init process)

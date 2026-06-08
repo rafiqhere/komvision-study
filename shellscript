@@ -1,0 +1,61 @@
+#!/bin/bash
+set -e
+
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
+
+    if ! getent group "$DOCKER_GID" >/dev/null; then
+        groupadd -g "$DOCKER_GID" dockerhost
+    fi
+
+    usermod -aG "$DOCKER_GID" jenkins
+fi
+
+if [ -n "${NB_SETUP_KEY:-}" ]; then
+    if [ -S /var/run/netbird.sock ]; then
+        if ! netbird status >/dev/null 2>&1; then
+            echo "Removing stale NetBird socket..."
+            rm -f /var/run/netbird.sock
+        fi
+    fi
+
+    echo "Starting NetBird..."
+
+    netbird service start || true
+
+    echo "Waiting for NetBird daemon socket..."
+
+    for i in $(seq 1 20); do
+        if [ -S /var/run/netbird.sock ]; then
+            echo "NetBird daemon socket is ready."
+            break
+        fi
+
+        sleep 1
+    done
+
+    if [ ! -S /var/run/netbird.sock ]; then
+        echo "NetBird daemon socket was not created."
+        ps aux | grep netbird || true
+        exit 1
+    fi
+
+    echo "Starting Netbird Daemon"
+    netbird up \
+        --setup-key "$NB_SETUP_KEY" \
+        --no-browser \
+        --block-inbound \
+        --hostname "${NB_HOSTNAME:-jenkins}" \
+        ${NB_MANAGEMENT_URL:+--management-url "$NB_MANAGEMENT_URL"}
+        # if [-n "NB_MANAGEMENT_URL"]; then
+        # --magement-url "$NB_MANAGEMENT_URL"
+        # fi
+
+    echo "Netbird status is"
+    netbird status || true
+else
+    echo "NB_SETUP_KEY not provided; skipping NetBird startup."
+fi
+
+exec gosu jenkins /usr/bin/tini -- /usr/local/bin/jenkins.sh
+ 

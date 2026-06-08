@@ -1,0 +1,119 @@
+jenkins:
+  systemMessage: "Jenkins is managed by Ohm Vision, Inc"
+
+  securityRealm:
+    oic:
+      clientId: "${json:clientId:${logicandcrayons/jenkins/oidc_client}}"
+      clientSecret: "${json:secret:${logicandcrayons/jenkins/oidc_client}}"
+      serverConfiguration:
+        wellKnown:
+          wellKnownOpenIDConfigurationUrl: "${json:wellKnownUrl:${logicandcrayons/jenkins/oidc_client}}"
+          scopesOverride: "${json:scopes:${logicandcrayons/jenkins/oidc_client}}"
+      userNameField: preferred_username
+      userIdStrategy: "caseSensitive"
+      fullNameFieldName: name
+      emailFieldName: email
+      groupIdStrategy: "caseSensitive"
+      groupsFieldName: groups
+      logoutFromOpenidProvider: true
+      postLogoutRedirectUrl: "${json:postLogoutRedirectUrl:${logicandcrayons/jenkins/oidc_client}}"
+      properties:
+        - escapeHatch:
+            username: "${json:username:${logicandcrayons/jenkins/escape_hatch}}"
+            secret: "${json:password:${logicandcrayons/jenkins/escape_hatch}}"
+            group: "/admin"
+
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+        - name: "admin"
+          pattern: ".*"
+          entries:
+          - group: "/admin"
+          permissions:
+          - "Overall/Administer"
+        - name: "developer"
+          pattern: ".*"
+          entries:
+          - group: "/developer"
+          permissions:
+          - "Job/Cancel"
+          - "Overall/Read"
+          - "Job/Build"
+          - "Run/Update"
+          - "Job/Read"
+          - "Job/Workspace"
+          - "View/Read"
+          - "Run/Replay"
+  numExecutors: 0
+
+  projectNamingStrategy:
+      roleBased:
+        forceExistingJobs: true
+
+security:
+  contentSecurityPolicy:
+    enforce: true
+  gitHostKeyVerificationConfiguration:
+    sshHostKeyVerificationStrategy:
+      manuallyProvidedKeyVerificationStrategy:
+        approvedHostKeys: |-
+          bitbucket.org ssh-rsa +aySyboD5QF61I/1WeTwu+deCbgKMGbUijeXhtfbxSxm6JwGrXrhBdofTsbKRUsrN1WoNgUa8uqN1Vx6WAJw1JHPhglEGGHea6QICwJOAr/6mrui/oB7pkaWKHj3z7d1IC4KWLtY47elvjbaTlkN04Kc/5LFEirorGYVbt15kAUlqGM65pk6ZBxtaO3+30LVlORZkxOh+LKL/BvbZ/iRNhItLqNyieoQj/uh/7Iv4uyH/cV/0b4WDSd3DptigWq84lJubb9t/DnZlrJazxyDCulTmKdOR7vs9gMTo+uoIrPSb8ScTtvw65+odKAlBj59dhnVp9zd7QUojOpXlL62Aw56U4oO+FALuevvMjiWeavKhJqlR7i5n9srYcrNV7ttmDw7kf/97P5zauIhxcjX+xHv4M=
+          bitbucket.org ecdsa-sha2-nistp256 +a2sjSSpBK0iqitSQ+5BM9KhpexuGt20JpTVM7u5BDZngncgrqDMbWdxMWWOGtZ9UgbqgZE=
+          bitbucket.org ssh-ed25519 xdzfdsfsdfdsdfsdfsdff+UsdfsdfdsfdsfUO
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "datadimensions-ssh-local"
+              description: "Data Dimensions Bitbucket SSH Key (Local)"
+              username: "git"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${logicandcrayons/jenkins/datadimensions-ssh}"
+
+unclassified:
+  location:
+    url: "${JENKINS_URL}"
+  bitbucketEndpointConfiguration:
+    endpoints:
+      - bitbucketCloudEndpoint:
+          enableCache: true
+          manageHooks: true
+          credentialsId: "ortholegal-bitbucket-api-token"
+          enableHookSignature: true
+          hookSignatureCredentialsId: "ortholegal-bitbucket-webhook-secret"
+          repositoriesCacheDuration: 20
+          teamCacheDuration: 20
+  awsCredentialsProvider:
+    cache: false # for now
+    client:
+      region: "${AWS_REGION}"
+      # Optional. Prefer default AWS auth when Jenkins runs on EC2/ECS/EKS.
+    listSecrets:
+      filters:
+        - key: tag-key
+          values:
+            - "jenkins:credentials:type"
+        - key: tag-value
+          values:
+            - "${AWS_APPLICATION_TAG}"
+    transformations:
+      description: "default"
+      name:
+        removePrefix:
+          prefix: "logicandcrayons/jenkins/"
+  buildDiscarders:
+      configuredBuildDiscarders:
+      - "jobBuildDiscarder"
+      - simpleBuildDiscarder:
+          discarder:
+            logRotator:
+              numToKeepStr: "10"
+ 

@@ -1,0 +1,79 @@
+FROM jenkins/jenkins:lts-jdk21 
+# Long Term Support version of Jenkins with OpenJDK 21 from docker hub registry.
+
+USER root  
+# Switch to root user to install additional packages and tools.
+
+
+RUN apt-get update && \
+    apt-get install -y \
+      ca-certificates \
+      curl \
+      gnupg \
+      lsb-release \
+      gosu \
+      iproute2 \
+      wireguard-tools && \
+# installs the above packages and tools in the image.
+    install -m 0755 -d /etc/apt/keyrings && \
+# creates the directory and sets the permisstions for the Docker GPG key.
+    curl -fsSL https://download.docker.com/linux/debian/gpg | \
+# downloads the Docker GPG key and saves it to the specified location with appropriate permissions.
+      gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+# the downloaded GPG key is being piped through gpg to convert it to a format suitable for apt and then saved to the specified location.
+    chmod a+r /etc/apt/keyrings/docker.gpg && \
+# configures the permissions for the GPG key, it's equivalent to: chmod 644 docker.gpg
+    echo \
+      "deb [arch=$(dpkg --print-architecture) \
+      signed-by=/etc/apt/keyrings/docker.gpg] \
+      https://download.docker.com/linux/debian \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+# confusion.........
+# adds the Docker repository to the apt sources list, specifying the architecture and signing key for package verification.
+    apt-get update && \
+# another update so apt can see Docker packages.
+    apt-get install -y docker-ce-cli && \
+# installs the Docker CLI.
+    curl -fsSL https://pkgs.netbird.io/install.sh | sh && \
+# Installs NetBird VPN tools.
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+# Cleans up the apt cache and removes the list of packages to reduce the image size.
+
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# Copies docker-entrypoint.sh from the local directory to the specified location in the image, which will be used as the entry point for the container.
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# configures the permission for the entry point script to make it executable. Equivalent to: chmod 755 /usr/local/bin/docker-entrypoint.sh
+
+RUN jenkins-plugin-cli --plugins \
+    git \
+    job-dsl \
+    workflow-aggregator \
+    workflow-multibranch \
+    docker-workflow \
+    docker-plugin \
+    blueocean \
+    oic-auth \
+    configuration-as-code \
+    role-strategy \
+    bitbucket \
+    cloudbees-bitbucket-branch-source \
+    credentials \
+    credentials-binding \
+    plain-credentials \
+    cloudbees-folder \
+    custom-tools-plugin \
+    extra-tool-installers \
+    msbuild \
+    ws-cleanup \
+    aws-secrets-manager-secret-source \
+    aws-secrets-manager-credentials-provider \
+    nodejs \
+    terraform
+# Installs the above listed Jenkins plugins.
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Sets the entry point. It executes the docker-entrypoint.sh script when the container starts to configure and connect to the VPN.
